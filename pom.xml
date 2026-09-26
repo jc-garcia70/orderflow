@@ -40,7 +40,7 @@
 
         <!-- Microservices -->
         <!-- <module>gateway-service</module> -->
-        <!-- <module>users-service</module> -->
+        <module>users-service</module>
         <!-- <module>orders-service</module> -->
         <!-- <module>inventory-service</module> -->
         <!-- <module>notification-service</module> -->

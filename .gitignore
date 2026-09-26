@@ -30,7 +30,7 @@ buildNumber.properties
 *.iml
 *.iws
 *.ipr
-out/
+/out/
 
 # Visual Studio Code
 .vscode/
