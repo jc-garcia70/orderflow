@@ -36,30 +36,32 @@ public class AuthService implements RegisterUserUseCase, LoginUseCase, ChangePas
     @Override
     @Transactional(readOnly = true)
     public AuthResult login(LoginCommand command) {
-
         // 1. Find user by email, fail with generic unauthorized error to prevent enumeration
         User user = userRepositoryPort.findByEmail(command.email())
-                .orElseThrow( ()-> new UnauthorizedException("Invalid email or password"));
+                .orElseThrow(() -> new UnauthorizedException("Invalid email or password"));
 
-        // 2. Verify password match
-        if(!passwordEncoderPort.matches(command.password(), user.getPassword())){
+        // 2. Check if user account is active
+        if (!user.isActive()) {
+            throw new UnauthorizedException("User account has been deactivated");
+        }
+
+        // 3. Verify password match
+        if (!passwordEncoderPort.matches(command.password(), user.getPassword())) {
             throw new UnauthorizedException("Invalid email or password");
         }
 
-        // 3. Issue signed JWT token via token provider port
+        // 4. Issue signed JWT token via token provider port
         String token = tokenProviderPort.generateToken(user);
 
-        return new AuthResult(token,user);
+        return new AuthResult(token, user);
     }
 
     @Override
     @Transactional
     public User register(RegisterCommand command) {
-
         // 1. Business rule: Email must be unique
-        if(userRepositoryPort.existsByEmail(command.email())){
-            throw new UnauthorizedException("A user with email  " +
-                    command.email() + " already exists");
+        if (userRepositoryPort.existsByEmail(command.email())) {
+            throw new BusinessException("A user with email '" + command.email() + "' already exists");
         }
 
         // 2. Hash raw password using outbound port
