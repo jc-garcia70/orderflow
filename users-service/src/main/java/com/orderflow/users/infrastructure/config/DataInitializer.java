@@ -20,7 +20,7 @@ public class DataInitializer {
                                            PasswordEncoderPort passwordEncoderPort){
 
         return args -> {
-            String adminEmail = "admin@orderflow.com";
+            String adminEmail = "admin@gmial.com";
             if (!userRepositoryPort.existsByEmail(adminEmail)) {
                 User admin = new User(
                         adminEmail,
