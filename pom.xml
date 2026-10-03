@@ -27,6 +27,7 @@
         <spring-cloud.version>2025.1.2</spring-cloud.version>
         <springdoc.version>2.8.5</springdoc.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <h2.version>2.3.232</h2.version>
     </properties>
 
     <!--
@@ -97,6 +98,7 @@
             <dependency>
                 <groupId>com.h2database</groupId>
                 <artifactId>h2</artifactId>
+                <version>${h2.version}</version>
                 <scope>test</scope>
             </dependency>
 
@@ -106,6 +108,7 @@
                 <artifactId>common-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
+
             <!--
             <dependency>
                 <groupId>com.orderflow</groupId>
