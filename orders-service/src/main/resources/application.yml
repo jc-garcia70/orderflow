@@ -5,6 +5,11 @@ spring:
   application:
     name: orders-service
 
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+
   datasource:
     url: jdbc:postgresql://localhost:5432/orders_db
     username: ${DB_USER:orderflow}
@@ -34,3 +39,17 @@ spring:
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
       retries: 3
+
+
+jwt:
+  secret: ${JWT_SECRET}
+
+inventory-service:
+  base-url: ${INVENTORY_SERVICE_BASE_URL:http://localhost:8082}
+  connect-timeout: ${INVENTORY_SERVICE_CONNECT_TIMEOUT:2s}
+  read-timeout: ${INVENTORY_SERVICE_READ_TIMEOUT:3s}
+
+outbox:
+  poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:1000}
+  kafka-send-timeout-ms: ${OUTBOX_KAFKA_SEND_TIMEOUT_MS:10000}
+  published-retention-days: ${OUTBOX_PUBLISHED_RETENTION_DAYS:30}

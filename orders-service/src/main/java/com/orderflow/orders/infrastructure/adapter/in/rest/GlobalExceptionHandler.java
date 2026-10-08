@@ -4,6 +4,7 @@ import com.orderflow.common.dto.ErrorResponse;
 import com.orderflow.common.dto.ValidationError;
 import com.orderflow.common.exception.BusinessException;
 import com.orderflow.common.exception.ResourceNotFoundException;
+import com.orderflow.orders.application.exception.InventoryServiceUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -61,6 +62,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
     }
 
+    @ExceptionHandler(InventoryServiceUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleInventoryUnavailable(
+            InventoryServiceUnavailableException ex,
+            HttpServletRequest request
+    ) {
+        ErrorResponse errorResponse = ErrorResponse.of(
+                HttpStatus.SERVICE_UNAVAILABLE.value(),
+                HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        );
+
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(errorResponse);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(Exception ex, HttpServletRequest request) {
         ErrorResponse errorResponse = ErrorResponse.of(
@@ -71,5 +88,6 @@ public class GlobalExceptionHandler {
         );
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }
+
 
 }

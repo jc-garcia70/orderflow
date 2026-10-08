@@ -12,8 +12,7 @@ public interface CreateOrderUseCase {
 
     record OrderItemCommand(
             String productId,
-            int quantity,
-            BigDecimal unitPrice
+            int quantity
     ){}
 
     record CreateOrderCommand(
