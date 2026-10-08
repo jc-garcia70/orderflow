@@ -1,5 +1,6 @@
 package com.orderflow.orders.infrastructure.adapter.in.kafka;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 @Component
 public class InventoryEventConsumer {
@@ -29,35 +31,39 @@ public class InventoryEventConsumer {
 
 
     @KafkaListener(topics = KafkaTopics.INVENTORY_EVENTS, groupId = "${spring.kafka.consumer.group-id:orders-group}")
-    public void consumeInventoryEvent(String message) {
-        try {
-            JsonNode rootNode = objectMapper.readTree(message);
-            String eventType = rootNode.path("eventType").asText();
+    public void consumeInventoryEvent(String message) throws JsonProcessingException {
+        JsonNode rootNode = objectMapper.readTree(message);
+        if (rootNode == null || !rootNode.hasNonNull("eventType")) {
+            throw new IllegalArgumentException("Inventory event is missing eventType");
+        }
 
-            log.info("Received Kafka event '{}' from topic '{}'", eventType, KafkaTopics.INVENTORY_EVENTS);
+        String eventType = rootNode.path("eventType").asText();
+        if (!StringUtils.hasText(eventType)) {
+            throw new IllegalArgumentException("Inventory event eventType must not be blank");
+        }
 
-            if (EventType.STOCK_RESERVED.equals(eventType)) {
-                EventEnvelope<StockReservedPayload> envelope = objectMapper.readValue(
-                        message,
-                        new TypeReference<EventEnvelope<StockReservedPayload>>() {}
-                );
+        log.info("Received Kafka event '{}' from topic '{}'", eventType, KafkaTopics.INVENTORY_EVENTS);
 
-                handleStockReserved(envelope);
-
-            } else if (EventType.STOCK_REJECTED.equals(eventType)) {
-                EventEnvelope<StockRejectedPayload> envelope = objectMapper.readValue(
-                        message,
-                        new TypeReference<EventEnvelope<StockRejectedPayload>>() {}
-                );
-
-                handleStockRejected(envelope);
-
-            } else {
-                log.debug("Ignoring event type '{}' in orders service", eventType);
+        if (EventType.STOCK_RESERVED.equals(eventType)) {
+            EventEnvelope<StockReservedPayload> envelope = objectMapper.readValue(
+                    message,
+                    new TypeReference<EventEnvelope<StockReservedPayload>>() {}
+            );
+            if (envelope.payload() == null) {
+                throw new IllegalArgumentException("StockReserved event payload must not be null");
             }
-
-        } catch (Exception e) {
-            log.error("Error processing message from topic '{}': {}", KafkaTopics.INVENTORY_EVENTS, message, e);
+            handleStockReserved(envelope);
+        } else if (EventType.STOCK_REJECTED.equals(eventType)) {
+            EventEnvelope<StockRejectedPayload> envelope = objectMapper.readValue(
+                    message,
+                    new TypeReference<EventEnvelope<StockRejectedPayload>>() {}
+            );
+            if (envelope.payload() == null) {
+                throw new IllegalArgumentException("StockRejected event payload must not be null");
+            }
+            handleStockRejected(envelope);
+        } else {
+            log.debug("Ignoring event type '{}' in orders service", eventType);
         }
 
     }

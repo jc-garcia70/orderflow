@@ -9,7 +9,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class InventoryEventConsumerTest {
@@ -77,5 +80,49 @@ class InventoryEventConsumerTest {
         consumer.consumeInventoryEvent(message);
 
         verify(orderSagaUseCase).handleStockRejected("ord-123", "INSUFFICIENT_STOCK");
+    }
+
+    @Test
+    @DisplayName("Should propagate processing failures so Kafka can retry the event")
+    void consumeInventoryEvent_WhenSagaFails_ShouldPropagateFailure() {
+        InventoryEventConsumer consumer = new InventoryEventConsumer(orderSagaUseCase, objectMapper);
+        String message = """
+                {
+                  "eventType": "StockReservedEvent",
+                  "payload": {
+                    "orderId": "ord-123",
+                    "reservationId": "res-123",
+                    "items": [{"productId": "prod-001", "quantityReserved": 2}]
+                  }
+                }
+                """;
+
+        doThrow(new IllegalStateException("temporary database failure"))
+                .when(orderSagaUseCase).handleStockReserved("ord-123");
+
+        assertThatThrownBy(() -> consumer.consumeInventoryEvent(message))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("temporary database failure");
+    }
+
+    @Test
+    @DisplayName("Should ignore unknown inventory event types")
+    void consumeInventoryEvent_WhenUnknownEvent_ShouldIgnoreIt() throws Exception {
+        InventoryEventConsumer consumer = new InventoryEventConsumer(orderSagaUseCase, objectMapper);
+
+        consumer.consumeInventoryEvent("""
+                {"eventType":"UnrelatedEvent","payload":{}}
+                """);
+
+        verifyNoInteractions(orderSagaUseCase);
+    }
+
+    @Test
+    @DisplayName("Should propagate malformed messages so they can be recovered to the dead-letter topic")
+    void consumeInventoryEvent_WhenMalformed_ShouldPropagateParsingFailure() {
+        InventoryEventConsumer consumer = new InventoryEventConsumer(orderSagaUseCase, objectMapper);
+
+        assertThatThrownBy(() -> consumer.consumeInventoryEvent("{malformed"))
+                .isInstanceOf(com.fasterxml.jackson.core.JsonProcessingException.class);
     }
 }

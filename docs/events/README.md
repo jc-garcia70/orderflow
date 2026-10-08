@@ -13,6 +13,16 @@ Este documento define la arquitectura orientada a eventos (**Event-Driven Archit
 
 > **Garantía de orden:** Al utilizar `orderId` como clave de partición (`Kafka Message Key`), se garantiza que todos los eventos relativos a un mismo pedido lleguen estrictamente en orden a la misma partición.
 
+### Outbox, reintentos y entrega
+
+`orders-service` persiste cada evento de pedido en `order_outbox` dentro de la misma transacción que crea o cambia la orden. Un relay publica posteriormente los registros pendientes en Kafka. Los envíos confirmados se marcan como publicados; los fallidos conservan el evento y se reintentan con backoff exponencial. Los registros publicados se conservan durante un periodo configurable antes de su limpieza.
+
+El relay proporciona entrega **al menos una vez**: un fallo del proceso después de que Kafka acepte un mensaje, pero antes de marcarlo como publicado en la base de datos, puede producir una entrega duplicada. Por eso los consumidores deben ser idempotentes y usar `eventId`/`aggregateId` para reconocer mensajes repetidos.
+
+El consumidor de `orders-service` reintenta fallos transitorios de `inventory-events` con backoff exponencial. Tras agotar los reintentos, el mensaje se publica en `inventory-events.DLT` para inspección y reprocesamiento operativo. El consumidor de `inventory-service` aplica la misma política a `order-events` y enruta los casos agotados a `order-events.DLT`. Los mensajes malformados también se enrutan a la DLT correspondiente.
+
+`inventory-service` registra cada `orderId` cuya reserva inicial ya procesó. Una redelivery del mismo `OrderCreatedEvent` no vuelve a descontar/reservar el inventario. El registro y los cambios de stock participan en la misma transacción local. La publicación de `StockReservedEvent` o `StockRejectedEvent` espera confirmación del broker, pero sigue sin compartir una transacción distribuida con PostgreSQL; un fallo justo después del ACK del broker y antes del commit de la base todavía puede requerir reconciliación. Una outbox propia para `inventory-service` es la mejora siguiente para cerrar esa ventana.
+
 ---
 
 ## 2. Flujo de Transacciones Distribuidas (Saga)
