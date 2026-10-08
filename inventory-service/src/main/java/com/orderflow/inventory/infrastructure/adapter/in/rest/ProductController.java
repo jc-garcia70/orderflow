@@ -89,4 +89,11 @@ public class ProductController {
         return ResponseEntity.ok(ApiResponse.success("Product deactivated successfully", null));
     }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<ProductResponse>> getProductById(@PathVariable String id) {
+        Product product = productUseCase.getProductById(id);
+        return ResponseEntity.ok(ApiResponse.success(ProductResponse.fromDomain(product)));
+    }
+
+
 }

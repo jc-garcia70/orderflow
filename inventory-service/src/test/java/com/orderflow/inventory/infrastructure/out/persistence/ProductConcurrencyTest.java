@@ -1,6 +1,7 @@
 package com.orderflow.inventory.infrastructure.out.persistence;
 
 import com.orderflow.common.exception.ConcurrencyConflictException;
+import com.orderflow.inventory.application.port.out.ProcessedOrderReservationPort;
 import com.orderflow.inventory.domain.model.Product;
 import com.orderflow.inventory.infrastructure.adapter.out.persistence.ProductPersistenceAdapter;
 import org.junit.jupiter.api.DisplayName;
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import java.math.BigDecimal;
+import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,6 +23,21 @@ class ProductConcurrencyTest {
 
     @Autowired
     private ProductPersistenceAdapter persistenceAdapter;
+
+    @Autowired
+    private ProcessedOrderReservationPort processedOrderReservationPort;
+
+    @Test
+    @DisplayName("Should persist processed order reservations for redelivery deduplication")
+    void shouldPersistProcessedOrderReservation() {
+        String orderId = UUID.randomUUID().toString();
+
+        assertThat(processedOrderReservationPort.existsByOrderId(orderId)).isFalse();
+
+        processedOrderReservationPort.markProcessed(orderId);
+
+        assertThat(processedOrderReservationPort.existsByOrderId(orderId)).isTrue();
+    }
 
     @Test
     @DisplayName("Should detect optimistic locking conflict when two concurrent threads modify the same product version")

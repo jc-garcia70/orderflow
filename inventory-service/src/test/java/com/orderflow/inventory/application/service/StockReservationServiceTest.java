@@ -7,6 +7,7 @@ import com.orderflow.inventory.application.port.in.StockReservationUseCase.Order
 import com.orderflow.inventory.application.port.in.StockReservationUseCase.ReleaseStockCommand;
 import com.orderflow.inventory.application.port.in.StockReservationUseCase.ReserveStockCommand;
 import com.orderflow.inventory.application.port.out.InventoryEventPublisherPort;
+import com.orderflow.inventory.application.port.out.ProcessedOrderReservationPort;
 import com.orderflow.inventory.application.port.out.ProductRepositoryPort;
 import com.orderflow.inventory.domain.model.Product;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +34,9 @@ class StockReservationServiceTest {
     @Mock
     private InventoryEventPublisherPort eventPublisherPort;
 
+    @Mock
+    private ProcessedOrderReservationPort processedOrderReservationPort;
+
     @InjectMocks
     private StockReservationService stockReservationService;
 
@@ -55,6 +59,21 @@ class StockReservationServiceTest {
     @Nested
     @DisplayName("Stock Reservation Flow")
     class ReservationTests {
+
+        @Test
+        @DisplayName("Should ignore duplicate order reservation requests")
+        void shouldIgnoreDuplicateReservationRequest() {
+            when(processedOrderReservationPort.existsByOrderId("ord-duplicate"))
+                    .thenReturn(true);
+
+            stockReservationService.reserveStock(new ReserveStockCommand(
+                    "ord-duplicate",
+                    List.of(new OrderItemRequest("p1", 2))
+            ));
+
+            verify(processedOrderReservationPort, never()).markProcessed(any());
+            verifyNoInteractions(productRepositoryPort, eventPublisherPort);
+        }
 
         @Test
         @DisplayName("Should successfully reserve stock and publish StockReservedPayload when all items are available")
@@ -164,4 +183,3 @@ class StockReservationServiceTest {
 
 
 }
-

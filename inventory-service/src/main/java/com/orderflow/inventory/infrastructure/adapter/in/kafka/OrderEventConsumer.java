@@ -1,5 +1,6 @@
 package com.orderflow.inventory.infrastructure.adapter.in.kafka;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import java.util.List;
 
 /**
@@ -33,26 +35,29 @@ public class OrderEventConsumer {
     }
 
     @KafkaListener(topics = KafkaTopics.ORDER_EVENTS, groupId = "${spring.kafka.consumer.group-id:inventory-group}")
-    public void consumeOrderEvent(String message) {
+    public void consumeOrderEvent(String message) throws JsonProcessingException {
+        JsonNode rootNode = objectMapper.readTree(message);
+        if (rootNode == null || !rootNode.hasNonNull("eventType")) {
+            throw new IllegalArgumentException("Order event is missing eventType");
+        }
 
-        try {
-            JsonNode rootNode = objectMapper.readTree(message);
-            String eventType = rootNode.path("eventType").asText();
-            log.info("Received Kafka event '{}' from topic '{}'", eventType, KafkaTopics.ORDER_EVENTS);
-            if (EventType.ORDER_CREATED.equals(eventType)) {
-                EventEnvelope<OrderCreatedPayload> envelope = objectMapper.readValue(
-                        message,
-                        new TypeReference<EventEnvelope<OrderCreatedPayload>>() {}
-                );
+        String eventType = rootNode.path("eventType").asText();
+        if (!StringUtils.hasText(eventType)) {
+            throw new IllegalArgumentException("Order event eventType must not be blank");
+        }
 
-                handleOrderCreated(envelope.payload());
-
-            } else {
-                log.debug("Ignoring event type '{}' in inventory service", eventType);
+        log.info("Received Kafka event '{}' from topic '{}'", eventType, KafkaTopics.ORDER_EVENTS);
+        if (EventType.ORDER_CREATED.equals(eventType)) {
+            EventEnvelope<OrderCreatedPayload> envelope = objectMapper.readValue(
+                    message,
+                    new TypeReference<EventEnvelope<OrderCreatedPayload>>() {}
+            );
+            if (envelope.payload() == null) {
+                throw new IllegalArgumentException("OrderCreated event payload must not be null");
             }
-
-        } catch (Exception e) {
-            log.error("Error processing message from topic '{}': {}", KafkaTopics.ORDER_EVENTS, message, e);
+            handleOrderCreated(envelope.payload());
+        } else {
+            log.debug("Ignoring event type '{}' in inventory service", eventType);
         }
     }
 
