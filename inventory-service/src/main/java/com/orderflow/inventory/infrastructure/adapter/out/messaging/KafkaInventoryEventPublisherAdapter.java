@@ -13,6 +13,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 /**
  * Secondary adapter implementing InventoryEventPublisherPort using Spring Kafka.
  * Serializes domain events wrapped in standard EventEnvelope and publishes to Kafka topics.
@@ -55,10 +59,16 @@ public class KafkaInventoryEventPublisherAdapter implements InventoryEventPublis
         try {
             String jsonPayload = objectMapper.writeValueAsString(envelope);
             log.info("Publishing event '{}' to topic '{}' with key '{}'", envelope.eventType(), topic, key);
-            kafkaTemplate.send(topic, key, jsonPayload);
+            kafkaTemplate.send(topic, key, jsonPayload).get(10, TimeUnit.SECONDS);
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize event '{}' for aggregate '{}'", envelope.eventType(), key, e);
             throw new IllegalStateException("Error serializing Kafka event", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while publishing inventory event", e);
+        } catch (ExecutionException | TimeoutException e) {
+            log.error("Failed to publish event '{}' for aggregate '{}'", envelope.eventType(), key, e);
+            throw new IllegalStateException("Error publishing inventory event", e);
         }
     }
 

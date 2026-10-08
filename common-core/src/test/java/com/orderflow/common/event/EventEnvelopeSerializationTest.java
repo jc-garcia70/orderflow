@@ -123,7 +123,7 @@ class EventEnvelopeSerializationTest {
         OrderConfirmedPayload payload = new OrderConfirmedPayload(
                 "ord-88392",
                 "usr-1204",
-                OrderStatus.CONFIRMADA,
+                OrderStatus.CONFIRMED,
                 new BigDecimal("219.98")
         );
         EventEnvelope<OrderConfirmedPayload> envelope = EventEnvelope.of(
@@ -138,7 +138,7 @@ class EventEnvelopeSerializationTest {
                 new TypeReference<EventEnvelope<OrderConfirmedPayload>>() {}
         );
 
-        assertThat(deserialized.payload().status()).isEqualTo(OrderStatus.CONFIRMADA);
+        assertThat(deserialized.payload().status()).isEqualTo(OrderStatus.CONFIRMED);
     }
 
     @Test
@@ -147,7 +147,7 @@ class EventEnvelopeSerializationTest {
         OrderCancelledPayload payload = new OrderCancelledPayload(
                 "ord-88392",
                 "usr-1204",
-                OrderStatus.CANCELADA,
+                OrderStatus.CANCELLED,
                 "INSUFFICIENT_STOCK"
         );
         EventEnvelope<OrderCancelledPayload> envelope = EventEnvelope.of(
@@ -162,7 +162,7 @@ class EventEnvelopeSerializationTest {
                 new TypeReference<EventEnvelope<OrderCancelledPayload>>() {}
         );
 
-        assertThat(deserialized.payload().status()).isEqualTo(OrderStatus.CANCELADA);
+        assertThat(deserialized.payload().status()).isEqualTo(OrderStatus.CANCELLED);
         assertThat(deserialized.payload().reason()).isEqualTo("INSUFFICIENT_STOCK");
     }
 }

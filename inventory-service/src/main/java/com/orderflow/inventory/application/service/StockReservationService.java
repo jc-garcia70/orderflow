@@ -7,6 +7,7 @@ import com.orderflow.common.event.inventory.StockRejectedPayload;
 import com.orderflow.common.event.inventory.StockReservedPayload;
 import com.orderflow.inventory.application.port.in.StockReservationUseCase;
 import com.orderflow.inventory.application.port.out.InventoryEventPublisherPort;
+import com.orderflow.inventory.application.port.out.ProcessedOrderReservationPort;
 import com.orderflow.inventory.application.port.out.ProductRepositoryPort;
 import com.orderflow.inventory.domain.model.Product;
 import org.slf4j.Logger;
@@ -27,16 +28,28 @@ public class StockReservationService implements StockReservationUseCase {
 
     private final ProductRepositoryPort productRepositoryPort;
     private final InventoryEventPublisherPort eventPublisherPort;
+    private final ProcessedOrderReservationPort processedOrderReservationPort;
 
-    public StockReservationService(ProductRepositoryPort productRepositoryPort, InventoryEventPublisherPort eventPublisherPort) {
+    public StockReservationService(
+            ProductRepositoryPort productRepositoryPort,
+            InventoryEventPublisherPort eventPublisherPort,
+            ProcessedOrderReservationPort processedOrderReservationPort
+    ) {
         this.productRepositoryPort = productRepositoryPort;
         this.eventPublisherPort = eventPublisherPort;
+        this.processedOrderReservationPort = processedOrderReservationPort;
     }
 
     @Override
     @Transactional
     public void reserveStock(ReserveStockCommand command) {
         log.info("Processing stock reservation for order: {}", command.orderId());
+        if (processedOrderReservationPort.existsByOrderId(command.orderId())) {
+            log.info("Ignoring duplicate stock reservation request for order '{}'", command.orderId());
+            return;
+        }
+        processedOrderReservationPort.markProcessed(command.orderId());
+
         List<FailedProductDto> failedProducts = new ArrayList<>();
         Map<Product, Integer> productsToReserve = new LinkedHashMap<>();
 

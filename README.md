@@ -34,6 +34,13 @@ Copia el archivo de plantilla `.env.example` a `.env` si deseas personalizar cre
 cp .env.example .env
 ```
 
+Los microservicios Java requieren `JWT_SECRET` para firmar y verificar tokens. Configura el mismo secreto aleatorio de al menos 32 bytes para `users-service` y `orders-service`; no guardes el secreto real en el repositorio. Al ejecutar los servicios desde PowerShell:
+```powershell
+$env:JWT_SECRET = "<secret-local-de-al-menos-32-bytes>"
+```
+
+La infraestructura de Docker Compose no carga esta variable en los procesos Maven ejecutados directamente en el host.
+
 ### 2. Iniciar Servicios de Soporte
 Levanta PostgreSQL, Kafka, Kafka-UI, Redis, Zipkin y Eureka con:
 ```bash
@@ -55,4 +62,3 @@ docker compose up -d
 ```bash
 docker compose down
 ```
-
