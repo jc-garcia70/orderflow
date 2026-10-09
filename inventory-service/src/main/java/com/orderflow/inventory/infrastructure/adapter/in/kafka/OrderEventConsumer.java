@@ -47,18 +47,31 @@ public class OrderEventConsumer {
         }
 
         log.info("Received Kafka event '{}' from topic '{}'", eventType, KafkaTopics.ORDER_EVENTS);
-        if (EventType.ORDER_CREATED.equals(eventType)) {
-            EventEnvelope<OrderCreatedPayload> envelope = objectMapper.readValue(
-                    message,
-                    new TypeReference<EventEnvelope<OrderCreatedPayload>>() {}
-            );
-            if (envelope.payload() == null) {
-                throw new IllegalArgumentException("OrderCreated event payload must not be null");
+        switch (eventType) {
+            case EventType.ORDER_CREATED -> {
+                EventEnvelope<OrderCreatedPayload> envelope = objectMapper.readValue(
+                        message, new TypeReference<EventEnvelope<OrderCreatedPayload>>() {});
+                if (envelope.payload() == null) {
+                    throw new IllegalArgumentException("OrderCreated event payload must not be null");
+                }
+                handleOrderCreated(envelope.payload());
             }
-            handleOrderCreated(envelope.payload());
-        } else {
-            log.debug("Ignoring event type '{}' in inventory service", eventType);
+            case EventType.ORDER_CONFIRMED ->
+                    stockReservationUseCase.confirmStock(
+                            new StockReservationUseCase.ConfirmStockCommand(requiredAggregateId(rootNode)));
+            case EventType.ORDER_CANCELLED ->
+                    stockReservationUseCase.releaseStock(
+                            new StockReservationUseCase.ReleaseStockCommand(requiredAggregateId(rootNode)));
+            default -> log.debug("Ignoring event type '{}' in inventory service", eventType);
         }
+    }
+
+    private String requiredAggregateId(JsonNode rootNode) {
+        String aggregateId = rootNode.path("aggregateId").asText();
+        if (!StringUtils.hasText(aggregateId)) {
+            throw new IllegalArgumentException("Order event aggregateId must not be blank");
+        }
+        return aggregateId;
     }
 
     private void handleOrderCreated(OrderCreatedPayload payload) {

@@ -9,7 +9,9 @@ import com.orderflow.inventory.application.port.in.StockReservationUseCase;
 import com.orderflow.inventory.application.port.out.InventoryEventPublisherPort;
 import com.orderflow.inventory.application.port.out.ProcessedOrderReservationPort;
 import com.orderflow.inventory.application.port.out.ProductRepositoryPort;
+import com.orderflow.inventory.application.port.out.ReservationRepositoryPort;
 import com.orderflow.inventory.domain.model.Product;
+import com.orderflow.inventory.domain.model.Reservation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,17 +31,20 @@ public class StockReservationService implements StockReservationUseCase {
     private final ProductRepositoryPort productRepositoryPort;
     private final InventoryEventPublisherPort eventPublisherPort;
     private final ProcessedOrderReservationPort processedOrderReservationPort;
+    private final ReservationRepositoryPort reservationRepositoryPort;
     private record Failure(FailedProductDto dto, StockRejectionReason reason) {}
 
 
     public StockReservationService(
             ProductRepositoryPort productRepositoryPort,
             InventoryEventPublisherPort eventPublisherPort,
-            ProcessedOrderReservationPort processedOrderReservationPort
-    ) {
+            ProcessedOrderReservationPort processedOrderReservationPort,
+            ReservationRepositoryPort reservationRepositoryPort) {
         this.productRepositoryPort = productRepositoryPort;
         this.eventPublisherPort = eventPublisherPort;
         this.processedOrderReservationPort = processedOrderReservationPort;
+        this.reservationRepositoryPort = reservationRepositoryPort;
+
     }
 
     @Override
@@ -104,6 +109,12 @@ public class StockReservationService implements StockReservationUseCase {
             reservedItems.add(new ReservedItemDto(product.getId(), quantity));
         }
 
+        reservationRepositoryPort.save(Reservation.reserved(
+                command.orderId(),
+                reservedItems.stream()
+                        .map(i -> new Reservation.Item(i.productId(), i.quantityReserved()))
+                        .toList()));
+
         String reservationId = UUID.randomUUID().toString();
         log.info("Stock successfully reserved for order '{}' with reservationId '{}'", command.orderId(), reservationId);
         StockReservedPayload reservedPayload = new StockReservedPayload(
@@ -117,34 +128,59 @@ public class StockReservationService implements StockReservationUseCase {
     @Override
     @Transactional
     public void releaseStock(ReleaseStockCommand command) {
-        log.info("Processing stock release (compensation) for order: {}", command.orderId());
-        if (command.items() == null || command.items().isEmpty()) {
+
+        Optional<Reservation> found = reservationRepositoryPort.findByOrderId(command.orderId());
+
+        if(found.isEmpty()) {
+            log.info("No reservation for order '{}' (rejected or unknown); nothing to release", command.orderId());
             return;
         }
-        for (OrderItemRequest item : command.items()) {
-            productRepositoryPort.findById(item.productId()).ifPresent(product -> {
-                product.releaseStock(item.quantity());
-                productRepositoryPort.save(product);
-                log.info("Released {} reserved units of product '{}' for order '{}'",
-                        item.quantity(), product.getId(), command.orderId());
+
+        Reservation reservation = found.get();
+        if(!reservation.release()) {
+            log.info("Reservation for order '{}' is {}; release ignored", command.orderId(), reservation.getStatus());
+            return;
+        }
+
+        for (Reservation.Item item : reservation.getItems()) {
+            productRepositoryPort.findById(item.productId()).ifPresent( p -> {
+                p.releaseStock(item.quantity());
+                productRepositoryPort.save(p);
             });
         }
+
+        reservationRepositoryPort.save(reservation);
+        log.info("Released reservation for order '{}'", command.orderId());
+
     }
 
     @Override
     @Transactional
     public void confirmStock(ConfirmStockCommand command) {
-        log.info("Processing stock confirmation for order: {}", command.orderId());
-        if (command.items() == null || command.items().isEmpty()) {
+
+        Optional<Reservation> found = reservationRepositoryPort.findByOrderId(command.orderId());
+        if(found.isEmpty()) {
+            log.warn("Confirmation received for order '{}' without reservation", command.orderId());
             return;
         }
-        for (OrderItemRequest item : command.items()) {
-            productRepositoryPort.findById(item.productId()).ifPresent(product -> {
-                product.confirmReservation(item.quantity());
-                productRepositoryPort.save(product);
-                log.info("Confirmed deduction of {} reserved units of product '{}' for order '{}'",
-                        item.quantity(), product.getId(), command.orderId());
+
+        Reservation reservation = found.get();
+        if(!reservation.confirm()) {
+            log.info("Reservation for order '{}' is {}; confirm ignored", command.orderId(), reservation.getStatus());
+            return;
+        }
+
+        for (Reservation.Item item : reservation.getItems()) {
+            productRepositoryPort.findById(item.productId()).ifPresent(p -> {
+                p.confirmReservation(item.quantity());
+                productRepositoryPort.save(p);
             });
         }
+
+        reservationRepositoryPort.save(reservation);
+        log.info("Confirmed reservation for order '{}'", command.orderId());
+
     }
+
+
 }

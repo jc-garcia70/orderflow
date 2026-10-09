@@ -10,6 +10,9 @@ import com.orderflow.inventory.application.port.out.InventoryEventPublisherPort;
 import com.orderflow.inventory.application.port.out.ProcessedOrderReservationPort;
 import com.orderflow.inventory.application.port.out.ProductRepositoryPort;
 import com.orderflow.inventory.domain.model.Product;
+import com.orderflow.inventory.application.port.out.ReservationRepositoryPort;
+import com.orderflow.inventory.domain.model.Reservation;
+import com.orderflow.inventory.domain.model.ReservationStatus;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -36,6 +39,9 @@ class StockReservationServiceTest {
 
     @Mock
     private ProcessedOrderReservationPort processedOrderReservationPort;
+
+    @Mock
+    private ReservationRepositoryPort reservationRepositoryPort;
 
     @InjectMocks
     private StockReservationService stockReservationService;
@@ -101,6 +107,11 @@ class StockReservationServiceTest {
             assertThat(published.orderId()).isEqualTo("ord-100");
             assertThat(published.reservationId()).isNotBlank();
             assertThat(published.items()).hasSize(2);
+            ArgumentCaptor<Reservation> reservationCaptor = ArgumentCaptor.forClass(Reservation.class);
+            verify(reservationRepositoryPort).save(reservationCaptor.capture());
+            assertThat(reservationCaptor.getValue().getOrderId()).isEqualTo("ord-100");
+            assertThat(reservationCaptor.getValue().getItems())
+                    .containsExactly(new Reservation.Item("p1", 2), new Reservation.Item("p2", 3));
             verify(eventPublisherPort, never()).publishStockRejected(any());
         }
 
@@ -121,6 +132,7 @@ class StockReservationServiceTest {
             stockReservationService.reserveStock(command);
             // Invariants: DB mutations must be aborted
             verify(productRepositoryPort, never()).save(any(Product.class));
+            verify(reservationRepositoryPort, never()).save(any(Reservation.class));
             verify(eventPublisherPort, never()).publishStockReserved(any());
             ArgumentCaptor<StockRejectedPayload> captor = ArgumentCaptor.forClass(StockRejectedPayload.class);
             verify(eventPublisherPort).publishStockRejected(captor.capture());
@@ -156,14 +168,17 @@ class StockReservationServiceTest {
         void shouldReleaseStock() {
             Product product = new Product("p1", "SKU-1", "Prod", "Desc", BigDecimal.TEN, 5, 5, true, 1L, null, null);
             when(productRepositoryPort.findById("p1")).thenReturn(Optional.of(product));
-            ReleaseStockCommand command = new ReleaseStockCommand(
-                    "ord-100",
-                    List.of(new OrderItemRequest("p1", 3))
-            );
+            Reservation reservation = Reservation.reserved("ord-100", List.of(new Reservation.Item("p1", 3)));
+            when(reservationRepositoryPort.findByOrderId("ord-100")).thenReturn(Optional.of(reservation));
+
+            ReleaseStockCommand command = new ReleaseStockCommand("ord-100");
             stockReservationService.releaseStock(command);
+
             assertThat(product.getAvailableQuantity()).isEqualTo(8);
             assertThat(product.getReservedQuantity()).isEqualTo(2);
             verify(productRepositoryPort).save(product);
+            verify(reservationRepositoryPort).save(reservation);
+            assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.RELEASED);
         }
 
         @Test
@@ -171,14 +186,57 @@ class StockReservationServiceTest {
         void shouldConfirmStock() {
             Product product = new Product("p1", "SKU-1", "Prod", "Desc", BigDecimal.TEN, 5, 5, true, 1L, null, null);
             when(productRepositoryPort.findById("p1")).thenReturn(Optional.of(product));
-            ConfirmStockCommand command = new ConfirmStockCommand(
-                    "ord-100",
-                    List.of(new OrderItemRequest("p1", 4))
-            );
+            Reservation reservation = Reservation.reserved("ord-100", List.of(new Reservation.Item("p1", 4)));
+            when(reservationRepositoryPort.findByOrderId("ord-100")).thenReturn(Optional.of(reservation));
+
+            ConfirmStockCommand command = new ConfirmStockCommand("ord-100");
             stockReservationService.confirmStock(command);
+
             assertThat(product.getAvailableQuantity()).isEqualTo(5);
             assertThat(product.getReservedQuantity()).isEqualTo(1);
             verify(productRepositoryPort).save(product);
+            verify(reservationRepositoryPort).save(reservation);
+            assertThat(reservation.getStatus()).isEqualTo(ReservationStatus.CONFIRMED);
+        }
+
+        @Test
+        @DisplayName("Should ignore duplicate confirmation for an already confirmed reservation")
+        void shouldIgnoreDuplicateConfirmation() {
+            Reservation reservation = new Reservation(
+                    "ord-100", List.of(new Reservation.Item("p1", 4)),
+                    ReservationStatus.CONFIRMED, 1L);
+            when(reservationRepositoryPort.findByOrderId("ord-100")).thenReturn(Optional.of(reservation));
+
+            stockReservationService.confirmStock(new ConfirmStockCommand("ord-100"));
+
+            verify(reservationRepositoryPort, never()).save(any(Reservation.class));
+            verifyNoInteractions(productRepositoryPort);
+        }
+
+        @Test
+        @DisplayName("Should not release stock after the reservation is confirmed")
+        void shouldIgnoreReleaseAfterConfirmation() {
+            Reservation reservation = new Reservation(
+                    "ord-100", List.of(new Reservation.Item("p1", 4)),
+                    ReservationStatus.CONFIRMED, 1L);
+            when(reservationRepositoryPort.findByOrderId("ord-100")).thenReturn(Optional.of(reservation));
+
+            stockReservationService.releaseStock(new ReleaseStockCommand("ord-100"));
+
+            verify(reservationRepositoryPort, never()).save(any(Reservation.class));
+            verifyNoInteractions(productRepositoryPort);
+        }
+
+        @Test
+        @DisplayName("Should ignore confirmation and release when no reservation exists")
+        void shouldIgnoreCommandsWithoutReservation() {
+            when(reservationRepositoryPort.findByOrderId("ord-100")).thenReturn(Optional.empty());
+
+            stockReservationService.confirmStock(new ConfirmStockCommand("ord-100"));
+            stockReservationService.releaseStock(new ReleaseStockCommand("ord-100"));
+
+            verify(reservationRepositoryPort, never()).save(any(Reservation.class));
+            verifyNoInteractions(productRepositoryPort);
         }
 
     }

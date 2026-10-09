@@ -19,13 +19,11 @@ public interface StockReservationUseCase {
     ){}
 
     record ReleaseStockCommand(
-            String orderId,
-            List<OrderItemRequest> items
+            String orderId
     ){}
 
     record ConfirmStockCommand(
-            String orderId,
-            List<OrderItemRequest> items
+            String orderId
     ) {}
 
     /**

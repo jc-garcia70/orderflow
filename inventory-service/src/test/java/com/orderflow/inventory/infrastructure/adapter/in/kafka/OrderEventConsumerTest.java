@@ -3,6 +3,7 @@ package com.orderflow.inventory.infrastructure.adapter.in.kafka;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.orderflow.common.event.EventType;
 import com.orderflow.inventory.application.port.in.StockReservationUseCase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -77,5 +78,52 @@ class OrderEventConsumerTest {
 
         assertThatThrownBy(() -> consumer.consumeOrderEvent("{malformed"))
                 .isInstanceOf(JsonProcessingException.class);
+    }
+
+    @Test
+    void consumeOrderEvent_DelegatesOrderConfirmedUsingAggregateIdWithoutDeserializingPayload() throws Exception {
+        OrderEventConsumer consumer = new OrderEventConsumer(stockReservationUseCase, objectMapper);
+
+        consumer.consumeOrderEvent("""
+                {
+                  "eventType": "%s",
+                  "aggregateId": "ord-confirmed",
+                  "payload": "not a deserializable order payload"
+                }
+                """.formatted(EventType.ORDER_CONFIRMED));
+
+        verify(stockReservationUseCase).confirmStock(
+                new StockReservationUseCase.ConfirmStockCommand("ord-confirmed"));
+    }
+
+    @Test
+    void consumeOrderEvent_DelegatesOrderCancelledUsingAggregateIdWithoutDeserializingPayload() throws Exception {
+        OrderEventConsumer consumer = new OrderEventConsumer(stockReservationUseCase, objectMapper);
+
+        consumer.consumeOrderEvent("""
+                {
+                  "eventType": "%s",
+                  "aggregateId": "ord-cancelled",
+                  "payload": "not a deserializable order payload"
+                }
+                """.formatted(EventType.ORDER_CANCELLED));
+
+        verify(stockReservationUseCase).releaseStock(
+                new StockReservationUseCase.ReleaseStockCommand("ord-cancelled"));
+    }
+
+    @Test
+    void consumeOrderEvent_RejectsBlankAggregateIdForOrderLifecycleEvents() {
+        OrderEventConsumer consumer = new OrderEventConsumer(stockReservationUseCase, objectMapper);
+
+        assertThatThrownBy(() -> consumer.consumeOrderEvent("""
+                {
+                  "eventType": "%s",
+                  "aggregateId": " ",
+                  "payload": {}
+                }
+                """.formatted(EventType.ORDER_CONFIRMED)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Order event aggregateId must not be blank");
     }
 }
