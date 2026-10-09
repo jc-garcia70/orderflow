@@ -29,6 +29,8 @@ public class StockReservationService implements StockReservationUseCase {
     private final ProductRepositoryPort productRepositoryPort;
     private final InventoryEventPublisherPort eventPublisherPort;
     private final ProcessedOrderReservationPort processedOrderReservationPort;
+    private record Failure(FailedProductDto dto, StockRejectionReason reason) {}
+
 
     public StockReservationService(
             ProductRepositoryPort productRepositoryPort,
@@ -50,7 +52,7 @@ public class StockReservationService implements StockReservationUseCase {
         }
         processedOrderReservationPort.markProcessed(command.orderId());
 
-        List<FailedProductDto> failedProducts = new ArrayList<>();
+        List<Failure> failures = new ArrayList<>();
         Map<Product, Integer> productsToReserve = new LinkedHashMap<>();
 
         // Phase 1: Pre-validation of all requested items (Atomic Check)
@@ -58,34 +60,40 @@ public class StockReservationService implements StockReservationUseCase {
             Optional<Product> productOpt = productRepositoryPort.findById(item.productId());
             if (productOpt.isEmpty()) {
                 log.warn("Product '{}' not found during reservation for order '{}'", item.productId(), command.orderId());
-                failedProducts.add(new FailedProductDto(item.productId(), item.quantity(), 0));
+                failures.add(new Failure(
+                        new FailedProductDto(item.productId(), item.quantity(), 0),
+                        StockRejectionReason.PRODUCT_NOT_FOUND));
                 continue;
             }
             Product product = productOpt.get();
             if (!product.isActive()) {
                 log.warn("Product '{}' is inactive for order '{}'", item.productId(), command.orderId());
-                failedProducts.add(new FailedProductDto(item.productId(), item.quantity(), product.getAvailableQuantity()));
+                failures.add(new Failure(
+                        new FailedProductDto(item.productId(), item.quantity(), product.getAvailableQuantity()),
+                        StockRejectionReason.PRODUCT_INACTIVE));
                 continue;
             }
             if (product.getAvailableQuantity() < item.quantity()) {
                 log.warn("Insufficient stock for product '{}' (requested: {}, available: {}) for order '{}'",
                         item.productId(), item.quantity(), product.getAvailableQuantity(), command.orderId());
-                failedProducts.add(new FailedProductDto(item.productId(), item.quantity(), product.getAvailableQuantity()));
+                failures.add(new Failure(
+                        new FailedProductDto(item.productId(), item.quantity(), product.getAvailableQuantity()),
+                        StockRejectionReason.INSUFFICIENT_STOCK));
                 continue;
             }
             productsToReserve.put(product, item.quantity());
         }
+
         // Phase 2: Handle Failure (Publish rejection to Kafka, abort DB mutations)
-        if (!failedProducts.isEmpty()) {
+        if (!failures.isEmpty()) {
             log.info("Stock reservation failed for order '{}'. Publishing StockRejected event", command.orderId());
-            StockRejectedPayload rejectedPayload = new StockRejectedPayload(
+            eventPublisherPort.publishStockRejected(new StockRejectedPayload(
                     command.orderId(),
-                    StockRejectionReason.INSUFFICIENT_STOCK.name(),
-                    failedProducts
-            );
-            eventPublisherPort.publishStockRejected(rejectedPayload);
+                    failures.getFirst().reason().name(),
+                    failures.stream().map(Failure::dto).toList()));
             return;
         }
+
         // Phase 3: Apply Reservation and Persist
         List<ReservedItemDto> reservedItems = new ArrayList<>();
         for (Map.Entry<Product, Integer> entry : productsToReserve.entrySet()) {
@@ -95,6 +103,7 @@ public class StockReservationService implements StockReservationUseCase {
             productRepositoryPort.save(product);
             reservedItems.add(new ReservedItemDto(product.getId(), quantity));
         }
+
         String reservationId = UUID.randomUUID().toString();
         log.info("Stock successfully reserved for order '{}' with reservationId '{}'", command.orderId(), reservationId);
         StockReservedPayload reservedPayload = new StockReservedPayload(

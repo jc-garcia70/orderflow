@@ -142,7 +142,9 @@ class StockReservationServiceTest {
             );
             stockReservationService.reserveStock(command);
             verify(productRepositoryPort, never()).save(any(Product.class));
-            verify(eventPublisherPort).publishStockRejected(any(StockRejectedPayload.class));
+            ArgumentCaptor<StockRejectedPayload> captor = ArgumentCaptor.forClass(StockRejectedPayload.class);
+            verify(eventPublisherPort).publishStockRejected(captor.capture());
+            assertThat(captor.getValue().reason()).isEqualTo("PRODUCT_NOT_FOUND");
         }
     }
 

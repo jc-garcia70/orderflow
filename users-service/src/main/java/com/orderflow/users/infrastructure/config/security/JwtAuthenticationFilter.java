@@ -24,7 +24,7 @@ import java.util.List;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private static final String BEARER_PREFIX = "Bearer";
+    private static final String BEARER_PREFIX = "Bearer ";
     private final TokenProviderPort tokenProviderPort;
 
     public JwtAuthenticationFilter(TokenProviderPort tokenProviderPort) {
