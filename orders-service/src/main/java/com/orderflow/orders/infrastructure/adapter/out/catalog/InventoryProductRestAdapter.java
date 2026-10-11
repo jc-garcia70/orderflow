@@ -28,19 +28,23 @@ public class InventoryProductRestAdapter implements ProductCatalogPort {
     public InventoryProductRestAdapter(
             @Value("${inventory-service.base-url}") String baseUrl,
             @Value("${inventory-service.connect-timeout:2s}") Duration connectTimeout,
-            @Value("${inventory-service.read-timeout:3s}") Duration readTimeout
+            @Value("${inventory-service.read-timeout:3s}") Duration readTimeout,
+            ServiceTokenProvider serviceTokenProvider          // <-- new
     ) {
         HttpClient httpClient = HttpClient.newBuilder()
                 .connectTimeout(connectTimeout)
                 .build();
 
-        JdkClientHttpRequestFactory requestFactory =
-                new JdkClientHttpRequestFactory(httpClient);
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
         requestFactory.setReadTimeout(readTimeout);
 
         this.restClient = RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(requestFactory)
+                .requestInterceptor((request, body, execution) -> {   // <-- new
+                    request.getHeaders().setBearerAuth(serviceTokenProvider.getToken());
+                    return execution.execute(request, body);
+                })
                 .build();
     }
 

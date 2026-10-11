@@ -34,3 +34,12 @@ spring:
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       acks: all
       retries: 3
+
+
+jwt:
+  secret: ${JWT_SECRET}
+
+service-auth:
+  secret: ${SERVICE_JWT_SECRET}
+  issuer: ${SERVICE_AUTH_ISSUER:orders-service}
+  audience: ${SERVICE_AUTH_AUDIENCE:inventory-service}

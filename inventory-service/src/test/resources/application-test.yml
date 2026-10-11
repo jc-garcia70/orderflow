@@ -10,3 +10,8 @@ spring:
     database-platform: org.hibernate.dialect.H2Dialect
   kafka:
     bootstrap-servers: localhost:9092
+
+jwt:
+  secret: 0123456789abcdef0123456789abcdef
+service-auth:
+  secret: fedcba9876543210fedcba9876543210

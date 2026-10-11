@@ -53,3 +53,9 @@ outbox:
   poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:1000}
   kafka-send-timeout-ms: ${OUTBOX_KAFKA_SEND_TIMEOUT_MS:10000}
   published-retention-days: ${OUTBOX_PUBLISHED_RETENTION_DAYS:30}
+
+service-auth:
+  secret: ${SERVICE_JWT_SECRET}
+  issuer: ${SERVICE_AUTH_ISSUER:orders-service}
+  audience: ${SERVICE_AUTH_AUDIENCE:inventory-service}
+  token-ttl: ${SERVICE_AUTH_TOKEN_TTL:5m}

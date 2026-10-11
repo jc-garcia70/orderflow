@@ -36,7 +36,13 @@ cp .env.example .env
 
 Los microservicios Java requieren `JWT_SECRET` para firmar y verificar tokens. Configura el mismo secreto aleatorio de al menos 32 bytes para `users-service` y `orders-service`; no guardes el secreto real en el repositorio. Al ejecutar los servicios desde PowerShell:
 ```powershell
-$env:JWT_SECRET = "<secret-local-de-al-menos-32-bytes>"
+
+# users-service, orders-service e inventory-service (mismo valor en los tres)
+$env:JWT_SECRET = "<secreto-usuarios-min-32-bytes>"
+
+# orders-service e inventory-service (mismo valor en ambos, DISTINTO de JWT_SECRET)
+$env:SERVICE_JWT_SECRET = "<secreto-servicios-min-32-bytes>"
+
 ```
 
 La infraestructura de Docker Compose no carga esta variable en los procesos Maven ejecutados directamente en el host.

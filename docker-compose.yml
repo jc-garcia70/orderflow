@@ -95,17 +95,18 @@ services:
       - orderflow-net
 
   # Service Discovery: Netflix Eureka Server
-  eureka:
-    image: steelwheels/netflix-eureka-server:latest
-    container_name: orderflow-eureka
-    restart: unless-stopped
-    ports:
-      - "${EUREKA_PORT:-8761}:8761"
-    environment:
-      EUREKA_CLIENT_REGISTERWITHEUREKA: "false"
-      EUREKA_CLIENT_FETCHREGISTRY: "false"
-    networks:
-      - orderflow-net
+
+#  eureka:
+#    image: steelwheels/netflix-eureka-server:latest
+#    container_name: orderflow-eureka
+#    restart: unless-stopped
+#    ports:
+#      - "${EUREKA_PORT:-8761}:8761"
+#    environment:
+#      EUREKA_CLIENT_REGISTERWITHEUREKA: "false"
+#      EUREKA_CLIENT_FETCHREGISTRY: "false"
+#    networks:
+#      - orderflow-net
 
 networks:
   orderflow-net:
