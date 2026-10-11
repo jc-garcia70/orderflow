@@ -1,12 +1,15 @@
 package com.orderflow.orders.infrastructure.adapter.out.persistence;
 
+import com.orderflow.common.enums.OrderStatus;
 import com.orderflow.orders.application.port.out.OrderRepositoryPort;
 import com.orderflow.orders.domain.model.Order;
 import com.orderflow.orders.domain.model.OrderItem;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -74,6 +77,17 @@ public class OrderPersistenceAdapter implements OrderRepositoryPort {
     @Override
     public Page<Order> findAll(Pageable pageable) {
         return repository.findAll(pageable).map(this::toDomain);
+    }
+
+    @Override
+    public Optional<Order> findByIdForUpdate(String id) {
+        return repository.findByIdForUpdate(id).map(this::toDomain);
+    }
+
+    @Override
+    public List<String> findPendingIdsCreatedBefore(Instant cutoff, int limit) {
+        return repository.findIdsByStatusAndCreatedAtBefore(
+                OrderStatus.PENDING, cutoff, PageRequest.of(0,limit));
     }
 
     private Order toDomain(OrderJpaEntity entity) {

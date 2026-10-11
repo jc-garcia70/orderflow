@@ -126,4 +126,31 @@ class OrderEventConsumerTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Order event aggregateId must not be blank");
     }
+
+    @Test
+    void consumeOrderEvent_DelegatesStockReleaseRequestedToReleaseUseCase() throws Exception {
+        OrderEventConsumer consumer = new OrderEventConsumer(stockReservationUseCase, objectMapper);
+
+        consumer.consumeOrderEvent("""
+            {
+              "eventType": "StockReleaseRequestedEvent",
+              "aggregateId": "ord-1",
+              "payload": {"orderId": "ord-1", "reason": "ORDER_TIMEOUT"}
+            }
+            """);
+
+        verify(stockReservationUseCase).releaseStock(
+                new StockReservationUseCase.ReleaseStockCommand("ord-1"));
+    }
+
+    @Test
+    void consumeOrderEvent_RejectsReleaseWithoutAggregateId() {
+        OrderEventConsumer consumer = new OrderEventConsumer(stockReservationUseCase, objectMapper);
+
+        assertThatThrownBy(() -> consumer.consumeOrderEvent("""
+            {"eventType": "OrderCancelledEvent", "payload": {}}
+            """))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
 }

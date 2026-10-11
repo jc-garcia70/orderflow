@@ -22,7 +22,8 @@ import java.util.List;
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
-@Table(name = "orders")
+@Table(name = "orders",
+        indexes = @Index(name = "idx_orders_status_created_at", columnList = "status,created_at"))
 public class OrderJpaEntity {
 
     @Id

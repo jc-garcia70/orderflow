@@ -8,6 +8,7 @@ import com.orderflow.common.event.KafkaTopics;
 import com.orderflow.common.event.order.OrderCancelledPayload;
 import com.orderflow.common.event.order.OrderConfirmedPayload;
 import com.orderflow.common.event.order.OrderCreatedPayload;
+import com.orderflow.common.event.order.StockReleaseRequestedPayload;
 import com.orderflow.orders.application.port.out.OrderEventPublisherPort;
 import com.orderflow.orders.infrastructure.adapter.out.messaging.outbox.OrderOutboxEntity;
 import com.orderflow.orders.infrastructure.adapter.out.messaging.outbox.OrderOutboxRepository;
@@ -49,6 +50,11 @@ public class OutboxOrderEventPublisherAdapter implements OrderEventPublisherPort
     @Override
     public void publishOrderCancelled(OrderCancelledPayload payload) {
         enqueue(EventType.ORDER_CANCELLED, payload.orderId(), payload);
+    }
+
+    @Override
+    public void publishStockReleaseRequested(StockReleaseRequestedPayload payload) {
+        enqueue(EventType.STOCK_RELEASE_REQUESTED, payload.orderId(), payload);
     }
 
     private <T> void enqueue(String eventType, String orderId, T payload) {

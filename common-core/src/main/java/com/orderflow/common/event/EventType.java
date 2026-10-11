@@ -14,4 +14,6 @@ public final class EventType {
     public static final String STOCK_REJECTED = "StockRejectedEvent";
     public static final String ORDER_CONFIRMED = "OrderConfirmedEvent";
     public static final String ORDER_CANCELLED = "OrderCancelledEvent";
+    public static final String STOCK_RELEASE_REQUESTED = "StockReleaseRequestedEvent";
+
 }

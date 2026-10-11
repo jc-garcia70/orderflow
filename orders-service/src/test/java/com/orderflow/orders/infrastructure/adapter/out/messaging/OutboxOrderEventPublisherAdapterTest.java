@@ -5,6 +5,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.orderflow.common.event.KafkaTopics;
 import com.orderflow.common.event.order.OrderCreatedPayload;
 import com.orderflow.common.event.order.OrderItemDto;
+import com.orderflow.common.event.order.StockReleaseRequestedPayload;
 import com.orderflow.orders.infrastructure.adapter.out.messaging.outbox.OrderOutboxEntity;
 import com.orderflow.orders.infrastructure.adapter.out.messaging.outbox.OrderOutboxRepository;
 import org.junit.jupiter.api.Test;
@@ -53,4 +54,27 @@ class OutboxOrderEventPublisherAdapterTest {
         assertThat(json.path("payload").path("orderId").asText()).isEqualTo("ord-1");
         assertThat(storedEvent.getCreatedAt()).isBeforeOrEqualTo(Instant.now());
     }
+
+    @Test
+    void publishStockReleaseRequested_PersistsEnvelopeKeyedByOrderId() throws Exception {
+        ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        OutboxOrderEventPublisherAdapter adapter =
+                new OutboxOrderEventPublisherAdapter(outboxRepository, objectMapper);
+
+        adapter.publishStockReleaseRequested(
+                new StockReleaseRequestedPayload("ord-1", "ORDER_TIMEOUT"));
+
+        ArgumentCaptor<OrderOutboxEntity> eventCaptor =
+                ArgumentCaptor.forClass(OrderOutboxEntity.class);
+        verify(outboxRepository).save(eventCaptor.capture());
+
+        OrderOutboxEntity storedEvent = eventCaptor.getValue();
+        var json = objectMapper.readTree(storedEvent.getPayload());
+        assertThat(storedEvent.getTopic()).isEqualTo(KafkaTopics.ORDER_EVENTS);
+        assertThat(storedEvent.getMessageKey()).isEqualTo("ord-1");
+        assertThat(json.path("eventType").asText()).isEqualTo("StockReleaseRequestedEvent");
+        assertThat(json.path("aggregateId").asText()).isEqualTo("ord-1");
+        assertThat(json.path("payload").path("reason").asText()).isEqualTo("ORDER_TIMEOUT");
+    }
+
 }

@@ -59,3 +59,9 @@ service-auth:
   issuer: ${SERVICE_AUTH_ISSUER:orders-service}
   audience: ${SERVICE_AUTH_AUDIENCE:inventory-service}
   token-ttl: ${SERVICE_AUTH_TOKEN_TTL:5m}
+
+orders:
+  pending-timeout: ${ORDERS_PENDING_TIMEOUT:15m}
+  timeout-check-interval-ms: ${ORDERS_TIMEOUT_CHECK_INTERVAL_MS:60000}
+  timeout-batch-size: ${ORDERS_TIMEOUT_BATCH_SIZE:100}
+

@@ -3,6 +3,7 @@ package com.orderflow.orders.application.port.out;
 import com.orderflow.common.event.order.OrderCancelledPayload;
 import com.orderflow.common.event.order.OrderConfirmedPayload;
 import com.orderflow.common.event.order.OrderCreatedPayload;
+import com.orderflow.common.event.order.StockReleaseRequestedPayload;
 
 /**
  * Outbound port for publishing order domain events to Kafka topics.
@@ -14,5 +15,7 @@ public interface OrderEventPublisherPort {
     void publishOrderConfirmed(OrderConfirmedPayload payload);
 
     void publishOrderCancelled(OrderCancelledPayload payload);
+
+    void publishStockReleaseRequested(StockReleaseRequestedPayload payload);
 
 }

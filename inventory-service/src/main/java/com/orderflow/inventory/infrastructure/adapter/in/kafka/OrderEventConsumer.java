@@ -58,21 +58,15 @@ public class OrderEventConsumer {
             }
             case EventType.ORDER_CONFIRMED ->
                     stockReservationUseCase.confirmStock(
-                            new StockReservationUseCase.ConfirmStockCommand(requiredAggregateId(rootNode)));
-            case EventType.ORDER_CANCELLED ->
+                            new StockReservationUseCase.ConfirmStockCommand(requireAggregateId(rootNode)));
+            case EventType.ORDER_CANCELLED, EventType.STOCK_RELEASE_REQUESTED ->
                     stockReservationUseCase.releaseStock(
-                            new StockReservationUseCase.ReleaseStockCommand(requiredAggregateId(rootNode)));
+                            new StockReservationUseCase.ReleaseStockCommand(requireAggregateId(rootNode)));
+
             default -> log.debug("Ignoring event type '{}' in inventory service", eventType);
         }
     }
 
-    private String requiredAggregateId(JsonNode rootNode) {
-        String aggregateId = rootNode.path("aggregateId").asText();
-        if (!StringUtils.hasText(aggregateId)) {
-            throw new IllegalArgumentException("Order event aggregateId must not be blank");
-        }
-        return aggregateId;
-    }
 
     private void handleOrderCreated(OrderCreatedPayload payload) {
         log.info("Handling OrderCreatedEvent for order '{}' with {} items", payload.orderId(), payload.items().size());
@@ -80,6 +74,18 @@ public class OrderEventConsumer {
                 .map(item -> new StockReservationUseCase.OrderItemRequest(item.productId(), item.quantity()))
                 .toList();
         stockReservationUseCase.reserveStock(new StockReservationUseCase.ReserveStockCommand(payload.orderId(), itemRequests));
+    }
+
+    private String requireAggregateId(JsonNode rootNode) {
+        JsonNode node = rootNode.get("aggregateId");
+        if (node == null || node.isNull()) {
+            throw new IllegalArgumentException("Order event is missing aggregateId");
+        }
+        String aggregateId = node.asText();
+        if (!StringUtils.hasText(aggregateId)) {
+            throw new IllegalArgumentException("Order event aggregateId must not be blank");
+        }
+        return aggregateId;
     }
 
 
