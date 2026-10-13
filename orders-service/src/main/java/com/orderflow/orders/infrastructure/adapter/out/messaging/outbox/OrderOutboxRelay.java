@@ -7,6 +7,7 @@ import org.springframework.kafka.KafkaException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -37,6 +38,7 @@ public class OrderOutboxRelay {
     }
 
     @Scheduled(fixedDelayString = "${outbox.poll-interval-ms:1000}")
+    @Transactional
     public void publishPendingEvents() {
         List<OrderOutboxEntity> pendingEvents =
                 outboxRepository
@@ -55,7 +57,10 @@ public class OrderOutboxRelay {
                 Thread.currentThread().interrupt();
                 recordFailure(event, ex);
                 return;
-            } catch (ExecutionException | TimeoutException | KafkaException ex) {
+            } catch (TimeoutException ex) {
+                recordFailure(event, ex);
+                return;          // broker unreachable: stop the batch
+            } catch (ExecutionException | KafkaException ex) {
                 recordFailure(event, ex);
             }
         }

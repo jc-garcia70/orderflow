@@ -10,6 +10,7 @@ import com.orderflow.common.event.inventory.StockReservedPayload;
 import com.orderflow.inventory.application.port.out.InventoryEventPublisherPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
@@ -22,6 +23,7 @@ import java.util.concurrent.TimeoutException;
  * Serializes domain events wrapped in standard EventEnvelope and publishes to Kafka topics.
  */
 @Component
+@ConditionalOnProperty(name = "inventory.events.publisher", havingValue = "kafka")
 public class KafkaInventoryEventPublisherAdapter implements InventoryEventPublisherPort{
 
     private static final Logger log = LoggerFactory.getLogger(KafkaInventoryEventPublisherAdapter.class);

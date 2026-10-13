@@ -1,4 +1,4 @@
-package com.orderflow.inventory.infrastructure.out.persistence;
+package com.orderflow.inventory.infrastructure.adapter.out.persistence;
 
 import com.orderflow.common.exception.ConcurrencyConflictException;
 import com.orderflow.inventory.application.port.in.StockReservationUseCase;
@@ -6,13 +6,13 @@ import com.orderflow.inventory.application.port.in.StockReservationUseCase.Confi
 import com.orderflow.inventory.application.port.in.StockReservationUseCase.OrderItemRequest;
 import com.orderflow.inventory.application.port.in.StockReservationUseCase.ReleaseStockCommand;
 import com.orderflow.inventory.application.port.in.StockReservationUseCase.ReserveStockCommand;
-import com.orderflow.inventory.application.port.out.InventoryEventPublisherPort;
 import com.orderflow.inventory.application.port.out.ProcessedOrderReservationPort;
 import com.orderflow.inventory.application.port.out.ReservationRepositoryPort;
 import com.orderflow.inventory.application.service.RetryingStockReservationService;
 import com.orderflow.inventory.domain.model.Product;
 import com.orderflow.inventory.domain.model.ReservationStatus;
-import com.orderflow.inventory.infrastructure.adapter.out.persistence.ProductPersistenceAdapter;
+import com.orderflow.inventory.infrastructure.adapter.out.messaging.outbox.InventoryOutboxEntity;
+import com.orderflow.inventory.infrastructure.adapter.out.messaging.outbox.InventoryOutboxRepository;
 import com.orderflow.inventory.support.AbstractPostgresIntegrationTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,8 +20,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataAccessException;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,8 +35,6 @@ import java.util.function.IntConsumer;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /**
@@ -47,7 +43,7 @@ import static org.mockito.Mockito.verify;
  */
 @SpringBootTest(properties = {
         "spring.kafka.listener.auto-startup=false",
-        // Generous retry budget so heavy contention in the test doesn't exhaust attempts
+        "outbox.relay.enabled=false",
         "inventory.retry.max-attempts=60",
         "inventory.retry.initial-backoff-ms=5",
         "inventory.retry.max-backoff-ms=50"
@@ -67,8 +63,8 @@ class ProductConcurrencyTest extends AbstractPostgresIntegrationTest {
     @Autowired
     private ProcessedOrderReservationPort processedOrderReservationPort;
 
-    @MockitoBean
-    private InventoryEventPublisherPort eventPublisher;
+    @Autowired
+    private InventoryOutboxRepository outbox;
 
     @Test
     @DisplayName("The use case injected into inbound adapters is the retrying decorator")
@@ -141,7 +137,11 @@ class ProductConcurrencyTest extends AbstractPostgresIntegrationTest {
         assertThat(finalState.getAvailableQuantity() + finalState.getReservedQuantity()).isEqualTo(stock);
 
         // Orders that didn't fit are rejected through the normal path (no product write, so no conflict)
-        verify(eventPublisher, times(orders - expectedReserved)).publishStockRejected(any());
+        // Exactly one event per order: attempts rolled back by a conflict leave nothing behind
+        List<InventoryOutboxEntity> events = eventsFor(orderIds);
+        assertThat(events).hasSize(orders);
+        assertThat(countOfType(events, "StockReservedEvent")).isEqualTo(expectedReserved);
+        assertThat(countOfType(events, "StockRejectedEvent")).isEqualTo(orders - expectedReserved);
     }
 
     @Test
@@ -198,6 +198,7 @@ class ProductConcurrencyTest extends AbstractPostgresIntegrationTest {
         assertThat(finalState.getReservedQuantity()).isEqualTo(5);
         assertThat(finalState.getAvailableQuantity()).isEqualTo(95);
         assertThat(isReserved(orderId)).isTrue();
+        assertThat(eventsFor(List.of(orderId))).hasSize(1);
     }
 
     // ---------- helpers ----------
@@ -262,4 +263,16 @@ class ProductConcurrencyTest extends AbstractPostgresIntegrationTest {
             pool.shutdownNow();
         }
     }
+
+    private List<InventoryOutboxEntity> eventsFor(List<String> orderIds) {
+        return outbox.findAll().stream()
+                .filter(e -> orderIds.contains(e.getMessageKey()))
+                .toList();
+    }
+
+    private long countOfType(List<InventoryOutboxEntity> events, String eventType) {
+        return events.stream().filter(e -> e.getPayload().contains("\"" + eventType + "\"")).count();
+    }
+
+
 }
