@@ -19,12 +19,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 
 @Service
@@ -35,60 +34,44 @@ public class OrderService implements CreateOrderUseCase,
     private final OrderRepositoryPort orderRepositoryPort;
     private final OrderEventPublisherPort orderEventPublisherPort;
     private final ProductCatalogPort productCatalogPort;
+    private final TransactionOperations transactionOperations;
 
     static final String TIMEOUT_REASON = "ORDER_TIMEOUT";
 
-    public OrderService(OrderRepositoryPort orderRepositoryPort, OrderEventPublisherPort orderEventPublisherPort, ProductCatalogPort productCatalogPort) {
+    public OrderService(OrderRepositoryPort orderRepositoryPort,
+                        OrderEventPublisherPort orderEventPublisherPort,
+                        ProductCatalogPort productCatalogPort,
+                        TransactionOperations transactionOperations) {
         this.orderRepositoryPort = orderRepositoryPort;
         this.orderEventPublisherPort = orderEventPublisherPort;
         this.productCatalogPort = productCatalogPort;
+        this.transactionOperations = transactionOperations;
     }
 
 
     @Override
-    @Transactional
     public Order createOrder(CreateOrderCommand command) {
-        log.info("Creating new order for user: {}",command.userId());
+        log.info("Creating new order for user: {}", command.userId());
+
+        // 1. Network calls to inventory: no transaction, no DB connection held
+        Map<String, ProductCatalogPort.ProductDetails> catalog = loadCatalog(command.items());
 
         List<OrderItem> domainItems = command.items().stream()
                 .map(item -> {
-                    ProductCatalogPort.ProductDetails product =
-                            productCatalogPort.getById(item.productId());
-
+                    ProductCatalogPort.ProductDetails product = catalog.get(item.productId());
                     if (!product.active()) {
-                        throw new BusinessException(
-                                "Product '" + item.productId() + "' is inactive"
-                        );
+                        throw new BusinessException("Product '" + item.productId() + "' is inactive");
                     }
-
-                    return new OrderItem(
-                            item.productId(),
-                            item.quantity(),
-                            product.price()
-                    );
+                    return new OrderItem(item.productId(), item.quantity(), product.price());
                 })
                 .toList();
 
         Order order = new Order(command.userId(), domainItems);
-        Order savedOrder = orderRepositoryPort.save(order);
 
-        log.info("Order '{}' created in PENDING status. Publishing OrderCreatedEvent to initiate " +
-                "Saga...", savedOrder.getId());
-
-        List<OrderItemDto> itemDtos = savedOrder.getItems().stream()
-                .map(item -> new OrderItemDto(item.getProductId(), item.getQuantity(), item.getUnitPrice()))
-                .toList();
-
-        OrderCreatedPayload payload = new OrderCreatedPayload(
-                savedOrder.getId(),
-                savedOrder.getUserId(),
-                itemDtos,
-                savedOrder.getTotalAmount()
-        );
-
-        orderEventPublisherPort.publishOrderCreated(payload);
-        return savedOrder;
+        // 2. Short transaction: only the order and its outbox event
+        return transactionOperations.execute(status -> persistAndPublish(order));
     }
+
 
     @Override
     @Transactional(readOnly = true)
@@ -188,5 +171,29 @@ public class OrderService implements CreateOrderUseCase,
         orderEventPublisherPort.publishOrderCancelled(new OrderCancelledPayload(
                 updated.getId(), updated.getUserId(), updated.getStatus(), reason));
     }
+
+    private Map<String, ProductCatalogPort.ProductDetails> loadCatalog(List<OrderItemCommand> items) {
+        Map<String, ProductCatalogPort.ProductDetails> catalog = new LinkedHashMap<>();
+        for (OrderItemCommand item : items) {
+            catalog.computeIfAbsent(item.productId(), productCatalogPort::getById);
+        }
+        return catalog;
+    }
+
+    private Order persistAndPublish(Order order) {
+        Order savedOrder = orderRepositoryPort.save(order);
+
+        log.info("Order '{}' created in PENDING status. Publishing OrderCreatedEvent to initiate Saga...",
+                savedOrder.getId());
+
+        List<OrderItemDto> itemDtos = savedOrder.getItems().stream()
+                .map(item -> new OrderItemDto(item.getProductId(), item.getQuantity(), item.getUnitPrice()))
+                .toList();
+
+        orderEventPublisherPort.publishOrderCreated(new OrderCreatedPayload(
+                savedOrder.getId(), savedOrder.getUserId(), itemDtos, savedOrder.getTotalAmount()));
+        return savedOrder;
+    }
+
 
 }

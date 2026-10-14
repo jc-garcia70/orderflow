@@ -1,5 +1,6 @@
 package com.orderflow.orders.infrastructure.adapter.in.rest;
 
+import com.orderflow.orders.application.exception.InventoryServiceUnavailableException;
 import com.orderflow.orders.application.port.in.CreateOrderUseCase;
 import com.orderflow.orders.application.port.in.GetOrderUseCase;
 import com.orderflow.orders.domain.model.Order;
@@ -251,4 +252,23 @@ class OrderControllerTest {
                 .signWith(Keys.hmacShaKeyFor(JWT_SECRET.getBytes(StandardCharsets.UTF_8)))
                 .compact();
     }
+
+    @Test
+    @DisplayName("POST /api/v1/orders should return 503 when inventory is unavailable")
+    void createOrder_InventoryUnavailable_ShouldReturn503() throws Exception {
+        when(createOrderUseCase.createOrder(any(CreateOrderUseCase.CreateOrderCommand.class)))
+                .thenThrow(new InventoryServiceUnavailableException(
+                        "Inventory service is temporarily unavailable", new RuntimeException()));
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .header(HttpHeaders.AUTHORIZATION, bearerToken("usr-123", "ROLE_USER"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {"items":[{"productId":"prod-001","quantity":1}]}
+                            """))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503));
+    }
+
+
 }

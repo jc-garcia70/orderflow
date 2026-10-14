@@ -5,6 +5,7 @@ import com.orderflow.common.event.order.OrderCancelledPayload;
 import com.orderflow.common.event.order.OrderCreatedPayload;
 import com.orderflow.common.event.order.StockReleaseRequestedPayload;
 import com.orderflow.common.exception.BusinessException;
+import com.orderflow.orders.application.exception.InventoryServiceUnavailableException;
 import com.orderflow.orders.application.port.in.CreateOrderUseCase;
 import com.orderflow.orders.application.port.out.OrderEventPublisherPort;
 import com.orderflow.orders.application.port.out.OrderRepositoryPort;
@@ -15,8 +16,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionOperations;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -26,10 +30,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class OrderServiceTest {
@@ -50,7 +51,8 @@ class OrderServiceTest {
         orderService = new OrderService(
                 orderRepositoryPort,
                 orderEventPublisherPort,
-                productCatalogPort
+                productCatalogPort,
+                TransactionOperations.withoutTransaction()
         );
     }
 
@@ -235,4 +237,58 @@ class OrderServiceTest {
                 Instant.now()
         );
     }
+
+    @Test
+    void createOrder_ResolvesCatalogBeforeOpeningTheTransaction() {
+        TransactionOperations tx = mock(TransactionOperations.class);
+        doAnswer(inv -> ((TransactionCallback<?>) inv.getArgument(0)).doInTransaction(null))
+                .when(tx).execute(any());
+        OrderService service = new OrderService(
+                orderRepositoryPort, orderEventPublisherPort, productCatalogPort, tx);
+
+        when(productCatalogPort.getById("prod-1"))
+                .thenReturn(new ProductCatalogPort.ProductDetails(new BigDecimal("10.00"), true));
+        when(orderRepositoryPort.save(any(Order.class))).thenAnswer(inv -> {
+            Order saved = inv.getArgument(0);
+            saved.setId("ord-1");
+            return saved;
+        });
+
+        service.createOrder(new CreateOrderUseCase.CreateOrderCommand(
+                "usr-1", List.of(new CreateOrderUseCase.OrderItemCommand("prod-1", 1))));
+
+        InOrder order = inOrder(productCatalogPort, tx, orderRepositoryPort);
+        order.verify(productCatalogPort).getById("prod-1");
+        order.verify(tx).execute(any());
+        order.verify(orderRepositoryPort).save(any(Order.class));
+    }
+
+    @Test
+    void createOrder_QueriesEachDistinctProductOnlyOnce() {
+        when(productCatalogPort.getById("prod-1"))
+                .thenReturn(new ProductCatalogPort.ProductDetails(new BigDecimal("10.00"), true));
+        when(orderRepositoryPort.save(any(Order.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        orderService.createOrder(new CreateOrderUseCase.CreateOrderCommand(
+                "usr-1",
+                List.of(new CreateOrderUseCase.OrderItemCommand("prod-1", 1),
+                        new CreateOrderUseCase.OrderItemCommand("prod-1", 2))));
+
+        verify(productCatalogPort, times(1)).getById("prod-1");
+    }
+
+    @Test
+    void createOrder_WhenInventoryIsUnavailable_PersistsNothing() {
+        when(productCatalogPort.getById("prod-1"))
+                .thenThrow(new InventoryServiceUnavailableException("down", new RuntimeException()));
+
+        assertThatThrownBy(() -> orderService.createOrder(new CreateOrderUseCase.CreateOrderCommand(
+                "usr-1", List.of(new CreateOrderUseCase.OrderItemCommand("prod-1", 1)))))
+                .isInstanceOf(InventoryServiceUnavailableException.class);
+
+        verify(orderRepositoryPort, never()).save(any(Order.class));
+        verifyNoInteractions(orderEventPublisherPort);
+    }
+
+
 }

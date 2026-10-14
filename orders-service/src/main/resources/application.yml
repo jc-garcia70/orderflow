@@ -48,6 +48,15 @@ inventory-service:
   base-url: ${INVENTORY_SERVICE_BASE_URL:http://localhost:8082}
   connect-timeout: ${INVENTORY_SERVICE_CONNECT_TIMEOUT:2s}
   read-timeout: ${INVENTORY_SERVICE_READ_TIMEOUT:3s}
+  resilience:
+    retry:
+      max-attempts: ${INVENTORY_RETRY_MAX_ATTEMPTS:3}
+      initial-backoff-ms: ${INVENTORY_RETRY_INITIAL_BACKOFF_MS:200}
+    circuit-breaker:
+      window-size: ${INVENTORY_CB_WINDOW_SIZE:10}
+      minimum-calls: ${INVENTORY_CB_MINIMUM_CALLS:5}
+      failure-rate-threshold: ${INVENTORY_CB_FAILURE_RATE:50}
+      open-state-wait: ${INVENTORY_CB_OPEN_WAIT:10s}
 
 outbox:
   poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:1000}
@@ -64,4 +73,6 @@ orders:
   pending-timeout: ${ORDERS_PENDING_TIMEOUT:15m}
   timeout-check-interval-ms: ${ORDERS_TIMEOUT_CHECK_INTERVAL_MS:60000}
   timeout-batch-size: ${ORDERS_TIMEOUT_BATCH_SIZE:100}
+
+
 
