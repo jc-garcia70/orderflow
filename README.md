@@ -46,6 +46,8 @@ $env:SERVICE_JWT_SECRET = "<secreto-servicios-min-32-bytes>"
 ```
 
 La infraestructura de Docker Compose no carga esta variable en los procesos Maven ejecutados directamente en el host.
+Los servicios usan por defecto las credenciales locales de PostgreSQL (`orderflow` / `orderflow_secret`), que coinciden con `docker-compose.yml`. Si cambias esas credenciales, exporta `DB_USER` y `DB_PASSWORD` también en la terminal desde la que ejecutas Maven; copiar `.env` no las carga automáticamente en PowerShell.
+PostgreSQL de Docker se publica en el puerto `5433` para evitar conflictos con instalaciones locales de PostgreSQL en `5432`. Si ya tienes un `.env` propio, cambia `POSTGRES_PORT` a `5433`; IntelliJ debe usar `jdbc:postgresql://localhost:5433/<base_de_datos>` si la configuración de ejecución define `SPRING_DATASOURCE_URL` explícitamente.
 
 ### 2. Iniciar Servicios de Soporte
 Levanta PostgreSQL, Kafka, Kafka-UI, Redis, Zipkin y Eureka con:
@@ -57,7 +59,7 @@ docker compose up -d
 
 | Servicio | Puerto Host | Descripción / Dashboard |
 | :--- | :--- | :--- |
-| **PostgreSQL** | `5432` | Base de datos relacional multi-DB |
+| **PostgreSQL** | `5433` | Base de datos relacional multi-DB |
 | **Kafka Broker** | `9092` | Broker de eventos PLAINTEXT |
 | **Kafka UI** | `8085` | Consola web: `http://localhost:8085` |
 | **Redis** | `6379` | Almacén en memoria |
@@ -68,3 +70,7 @@ docker compose up -d
 ```bash
 docker compose down
 ```
+
+### Migraciones de base de datos
+El esquema de cada servicio lo gestiona Flyway (`src/main/resources/db/migration`).
+Hibernate solo valida (`ddl-auto: validate`).

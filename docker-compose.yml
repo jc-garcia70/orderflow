@@ -7,7 +7,7 @@ services:
     container_name: orderflow-postgres
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-orderflow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orderflow_secret}

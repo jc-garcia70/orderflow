@@ -11,19 +11,22 @@ spring:
         max-page-size: 100
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/orders_db
+    url: jdbc:postgresql://localhost:${POSTGRES_PORT:5433}/orders_db
     username: ${DB_USER:orderflow}
-    password: ${DB_PASSWORD:orderflow123}
+    password: ${DB_PASSWORD:orderflow_secret}
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  flyway:
+    enabled: true
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -73,6 +76,5 @@ orders:
   pending-timeout: ${ORDERS_PENDING_TIMEOUT:15m}
   timeout-check-interval-ms: ${ORDERS_TIMEOUT_CHECK_INTERVAL_MS:60000}
   timeout-batch-size: ${ORDERS_TIMEOUT_BATCH_SIZE:100}
-
 
 
